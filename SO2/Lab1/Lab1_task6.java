@@ -1,3 +1,4 @@
+//Task6
 import java.util.Scanner;
 
 public class Lab1_task6 {
