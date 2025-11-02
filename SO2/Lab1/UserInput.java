@@ -1,3 +1,4 @@
+//Task1 - Main class
 import java.util.Scanner;
 
 public class UserInput {
@@ -70,3 +71,4 @@ public class UserInput {
         scanner.close();//informing compiler that we are done reading user input
     }
 }
+
