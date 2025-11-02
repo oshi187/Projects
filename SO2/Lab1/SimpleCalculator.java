@@ -1,3 +1,4 @@
+//Task5 - SimpleCalcultor Class
 import java.util.Scanner;
 
 public class SimpleCalculator {
@@ -24,3 +25,4 @@ public class SimpleCalculator {
         return a / b;
     }
 }
+
