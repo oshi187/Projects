@@ -12,9 +12,9 @@ int main()
     printf("According to \"Murphy’s law\" (https://en.wikipedia.org/wiki/Murphy%%27s_law)\n");
     printf("from 1949 we believe \"what can go wrong will go wrong sometimes\".\n");
     printf("For better programming skills and less errors\n");
-    printf("we need to spend 50 % of our time for practical exercising")
-    printf(With German letters you may have your trouble, too, like in
-    printf("h¨ort mit Spaß viel ¨uber sch¨one Dinge".
+    printf("we need to spend 50 % of our time for practical exercising\n");
+    printf("With German letters you may have your trouble, too, like in\n");
+    printf("h¨ort mit Spaß viel ¨uber sch¨one Dinge\n");
 
             
     return 0;
