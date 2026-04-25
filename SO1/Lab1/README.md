@@ -1,35 +1,16 @@
-# Lab 1 – First C Program
+# 🧪 Lab 1 – Introduction to C
 
-## Course
-Software Construction 1 (SO1) – Summer Semester 2024
+## 📌 Description
 
-## Author
-Oshini Jayaweera
+This lab introduces the basics of C programming and console output.
 
-## Description
-This lab demonstrates a basic C program using `printf`, escape characters, and formatted output.
+## 🔧 Topics Covered
 
-The program prints a short text about Murphy's Law and handling special characters.
+* Structure of a C program
+* Using `printf()`
+* Printing text and variables
+* Basic formatting
 
-## Files
-- first.c – main program file
+## 🎯 Learning Outcome
 
-## How to compile
-```bash
-gcc first.c -o first
-```
-
-## How to run
-```bash
-./first
-```
-
-## Example Output
-```
-According to "Murphy's law" (https://en.wikipedia.org/wiki/Murphy%27s_law)
-from 1949 we believe "what can go wrong will go wrong sometimes".
-For better programming skills and less errors
-we need to spend 50 % of our time on practical exercising.
-With German letters you may have your trouble, too, like in
-"hoert mit Spass viel ueber schoene Dinge".
-```
+Understanding how to write and run a simple C program and display output.
