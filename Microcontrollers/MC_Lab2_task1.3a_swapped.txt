@@ -1,0 +1,140 @@
+#include <stdint.h>
+#include "inc/tm4c1294ncpt.h"
+
+// ==========================================
+// 1. HELPER FUNCTIONS
+// ==========================================
+
+// Standard Software Delay
+void delay_software(unsigned long loops) {
+    volatile unsigned long i;
+    for (i = 0; i < loops; i++) {}
+}
+
+// Measurement Function (Using Timer0B on PD1)
+// Returns distance in CM.
+uint32_t get_distance(void) {
+    // 1. Trigger Pulse (PD0) - 10us High
+    GPIO_PORTD_AHB_DATA_R &= ~(1<<0); 
+    delay_software(20);
+    GPIO_PORTD_AHB_DATA_R |= (1<<0);  
+    delay_software(20);               
+    GPIO_PORTD_AHB_DATA_R &= ~(1<<0); 
+
+    // 2. Wait for Rising Edge (Start of Echo on PD1)
+    // Clear Capture B Flag (CBECINT is Bit 10)
+    TIMER0_ICR_R = (1<<10); 
+    
+    // Wait for CBERIS (Bit 10) to be set
+    while((TIMER0_RIS_R & (1<<10)) == 0); 
+    
+    // Save Start Time from Timer B Register
+    uint32_t start = TIMER0_TBR_R; 
+    
+    // Clear Flag
+    TIMER0_ICR_R = (1<<10); 
+
+    // 3. Wait for Falling Edge (End of Echo on PD1)
+    while((TIMER0_RIS_R & (1<<10)) == 0); 
+    
+    // Save End Time
+    uint32_t end = TIMER0_TBR_R; 
+
+    // 4. Calculate
+    // Timer counts DOWN (Start > End)
+    // Mask with 0xFFFF to handle wrap-around cleanly in 16-bit math
+    uint32_t diff = (start - end) & 0xFFFF;
+    
+    // Calibration: 16MHz clock / ~940 = 1 cm
+    return (diff / 940); 
+}
+
+int main(void) {
+    // ==========================================
+    // 2. HARDWARE SETUP
+    // ==========================================
+    
+    // A. Enable Clocks (Port D, L, M, Timer0)
+    SYSCTL_RCGCGPIO_R |= (1<<3) | (1<<10) | (1<<11);
+    SYSCTL_RCGCTIMER_R |= 0x01;
+    
+    // Wait for peripherals to be ready
+    while((SYSCTL_PRGPIO_R & (1<<3)) == 0);
+
+    // B. Port M (LEDs) -> OUTPUT
+    GPIO_PORTM_DEN_R = 0xFF;
+    GPIO_PORTM_DIR_R = 0xFF;
+
+    // C. Port L (Sync) -> INPUT
+    GPIO_PORTL_DEN_R |= 0x01;
+    GPIO_PORTL_DIR_R &= ~0x01;
+
+    // D. Port D (Sensor) Setup (SWAPPED)
+    // PD0 -> Output (Trigger)
+    GPIO_PORTD_AHB_DIR_R |= (1<<0); 
+    GPIO_PORTD_AHB_DEN_R |= (1<<0);
+
+    // PD1 -> Input (Echo) connected to Timer0B
+    GPIO_PORTD_AHB_DIR_R &= ~(1<<1); 
+    GPIO_PORTD_AHB_DEN_R |= (1<<1);  
+    GPIO_PORTD_AHB_AFSEL_R |= (1<<1); // Alt Function
+    
+    // PCTL for PD1 (Bits 4-7). Set to 3 for Timer0B
+    GPIO_PORTD_AHB_PCTL_R &= ~0x000000F0; 
+    GPIO_PORTD_AHB_PCTL_R |= 0x00000030;
+
+    // E. Timer Configuration (Timer 0B)
+    TIMER0_CTL_R &= ~(1<<8);     // Disable Timer B
+    TIMER0_CFG_R = 0x04;         // 16-bit Split Mode
+    
+    // Timer B Mode: Capture(3) + Edge(1) + Down(0) -> 0x07
+    TIMER0_TBMR_R = 0x07;        
+    
+    TIMER0_TBPR_R = 0xFF;        // Prescaler B (Max range)
+    TIMER0_TBILR_R = 0xFFFF;     // Max Load B
+    
+    // Event B: Both Edges (Bits 11:10 -> 0x3)
+    TIMER0_CTL_R |= (0x3 << 10); 
+    
+    TIMER0_CTL_R |= (1<<8);      // Enable Timer B
+
+    uint32_t measured_dist = 0;
+
+    // ==========================================
+    // 3. MAIN LOOP
+    // ==========================================
+    while(1) {
+        
+        // --- PHASE 1: MEASUREMENT (Moving Left) ---
+        // Wait for Sync HIGH (Rising Edge)
+        while((GPIO_PORTL_DATA_R & 0x01) == 0);
+
+        // Measure while moving Left (invisible to eye mostly)
+        uint32_t new_dist = get_distance();
+        
+        // Simple filter: ignore 0 or values > 100cm
+        if(new_dist > 0 && new_dist < 100) {
+            measured_dist = new_dist;
+        }
+
+        // --- PHASE 2: DISPLAY BAR (Moving Right) ---
+        // Wait for Sync LOW (Falling Edge)
+        while((GPIO_PORTL_DATA_R & 0x01) != 0);
+
+        // 1. Position Delay
+        // Wait a tiny bit so the bar doesn't start exactly at the plastic edge
+        delay_software(10000); 
+
+        // 2. Turn LEDs ON
+        // 0x18 = Two middle LEDs (looks like a horizontal line).
+        GPIO_PORTM_DATA_R = 0x18; 
+
+        // 3. Width Delay (Bar Length Logic)
+        // Keep LEDs ON for a time proportional to distance.
+        // Factor '2000' is experimental. Increase for longer bars.
+        delay_software(measured_dist * 2000);
+
+        // 4. Turn LEDs OFF
+        GPIO_PORTM_DATA_R = 0x00;
+    }
+}

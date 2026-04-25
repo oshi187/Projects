@@ -1,0 +1,110 @@
+#include <stdint.h>
+#include <stdio.h> // For printf
+#include "inc/tm4c1294ncpt.h"
+
+// Simple blocking delay for uS
+void delay_us(int us) {
+    int i, j;
+    for(i = 0; i < us; i++) {
+        for(j = 0; j < 3; j++) {} // Tuned roughly for 16MHz
+    }
+}
+
+int main(void) {
+    // ------------------------------------------------------
+    // 1. SETUP PORTS (SWAPPED CONFIGURATION)
+    // ------------------------------------------------------
+    
+    // Enable Port D Clock
+    SYSCTL_RCGCGPIO_R |= (1<<3); 
+    while((SYSCTL_PRGPIO_R & (1<<3)) == 0);
+
+    // PD0 = Trigger (Output)
+    // We use (1<<0) for Pin 0
+    GPIO_PORTD_AHB_DIR_R |= (1<<0); 
+    GPIO_PORTD_AHB_DEN_R |= (1<<0);
+
+    // PD1 = Echo (Input, Connects to Timer 0B)
+    // We use (1<<1) for Pin 1
+    GPIO_PORTD_AHB_DIR_R &= ~(1<<1); // Input
+    GPIO_PORTD_AHB_DEN_R |= (1<<1);  // Digital Enable
+    GPIO_PORTD_AHB_AFSEL_R |= (1<<1);// Alternate Function Enable
+    
+    // Configure PCTL for PD1
+    // PD1 is controlled by bits [7:4] (The second nibble)
+    // We need to set these bits to 3 (Binary 0011) to select Timer 0B
+    GPIO_PORTD_AHB_PCTL_R &= ~0x000000F0;   // Clear nibble for PD1
+    GPIO_PORTD_AHB_PCTL_R |= 0x00000030;    // Set to 3 (Shifted by 4)
+
+    // ------------------------------------------------------
+    // 2. SETUP TIMER 0B (Since PD1 maps to Timer B)
+    // ------------------------------------------------------
+    
+    // Enable Timer 0 Module Clock (Modules contain both A and B)
+    SYSCTL_RCGCTIMER_R |= 0x01;      
+    while((SYSCTL_PRTIMER_R & 0x01) == 0);
+
+    // Disable Timer 0B (Bit 8 is TBEN)
+    TIMER0_CTL_R &= ~(1<<8);           
+
+    // Set 16-bit Mode (Splits timer into A and B)
+    TIMER0_CFG_R = 0x04;             
+    
+    // Configure Timer B Mode (TBMR instead of TAMR)
+    // Capture Mode (0x3) + Edge-Time (Bit 2) + Count Down (Bit 4=0)
+    TIMER0_TBMR_R = 0x07;            
+    
+    // Prescaler for Timer B (TBPR instead of TAPR)
+    TIMER0_TBPR_R = 0xFF;            
+    
+    // Load Value for Timer B (TBILR instead of TAILR)
+    TIMER0_TBILR_R = 0xFFFF;         
+    
+    // Configure Event for Timer B: Capture BOTH Edges
+    // For Timer B, these are bits 11:10 (TBEVENT)
+    // Value 0x3 (Binary 11) shifted to bit 10
+    TIMER0_CTL_R |= (0x3 << 10);      
+    
+    // Enable Timer 0B (Bit 8)
+    TIMER0_CTL_R |= (1<<8);            
+
+    uint32_t start_time, end_time, pulse_width, distance_cm;
+
+    // --- 3. MAIN LOOP ---
+    while(1) {
+        // A. Trigger the Sensor (Now on PD0)
+        GPIO_PORTD_AHB_DATA_R &= ~(1<<0); // PD0 Low
+        delay_us(10);
+        GPIO_PORTD_AHB_DATA_R |= (1<<0);  // PD0 High
+        delay_us(10);                     // Wait 10us
+        GPIO_PORTD_AHB_DATA_R &= ~(1<<0); // PD0 Low
+
+        // B. Wait for Rising Edge (Start of Echo on PD1)
+        // Check Timer B Raw Interrupt Status (Bit 10 is CBERIS - Capture B Event)
+        TIMER0_ICR_R = (1<<10); // Clear Capture B Flag
+        while((TIMER0_RIS_R & (1<<10)) == 0); 
+        
+        // Save Time from Timer B Register (TBR)
+        start_time = TIMER0_TBR_R; 
+        
+        // Clear Flag
+        TIMER0_ICR_R = (1<<10);
+
+        // C. Wait for Falling Edge (End of Echo on PD1)
+        while((TIMER0_RIS_R & (1<<10)) == 0); 
+        
+        // Save Time from TBR
+        end_time = TIMER0_TBR_R; 
+
+        // D. Calculate
+        // Timer counts DOWN. Start is LARGER than End.
+        pulse_width = (start_time - end_time) & 0xFFFF; 
+        
+        // Rough Approx conversion for cm
+        distance_cm = pulse_width / 940; 
+
+        printf("Distance: %d cm\n", distance_cm);
+        
+        delay_us(100000); // Wait 100ms before next measure
+    }
+}
